@@ -81,7 +81,7 @@ if err1 or err2:
     st.error(f"⚠️ خطأ في الاتصال بالسوق: {err1 or err2}")
     st.stop()
 
-# 4. محرك التحليل والذكاء الاصطناعي (مع تعديل تقليص الـ Stop Loss)
+# 4. محرك التحليل والذكاء الاصطناعي (وقف خسارة ضيق + أهداف واسعة ومتباعدة)
 price = df_exec["close"].iloc[-1]
 ema20_trend = df_trend["close"].ewm(span=20).mean().iloc[-1]
 is_bullish = df_trend["close"].iloc[-1] > ema20_trend
@@ -93,22 +93,24 @@ if is_bullish:
     signal_dir = "شراء (BUY)"
     raw_dir = "BUY"
     entry = price
-    recent_low = df_exec["low"].tail(5).min()  # الاعتماد على آخر 5 شمعات لتضييق الـ SL
-    sl = recent_low - 0.5
+    recent_low = df_exec["low"].tail(5).min()
+    sl = recent_low - 0.8  # وقف خسارة قريب وتحت القاع بقليل
     risk_dist = abs(entry - sl)
-    tp1 = entry + risk_dist * 1.5
-    tp2 = entry + risk_dist * 2.5
-    tp3 = entry + risk_dist * 4.0
+    # أهداف واسعة وغير متلاصقة
+    tp1 = entry + risk_dist * 2.5
+    tp2 = entry + risk_dist * 4.5
+    tp3 = entry + risk_dist * 7.0
 else:
     signal_dir = "بيع (SELL)"
     raw_dir = "SELL"
     entry = price
-    recent_high = df_exec["high"].tail(5).max()  # وقف خسارة ذكي وقريب فوق آخر قمة قصيرة
-    sl = recent_high + 0.8
+    recent_high = df_exec["high"].tail(5).max()
+    sl = recent_high + 1.2  # وقف خسارة قريب وضيق فوق القمة مباشرة
     risk_dist = abs(sl - entry)
-    tp1 = entry - risk_dist * 1.5
-    tp2 = entry - risk_dist * 2.5
-    tp3 = entry - risk_dist * 4.0
+    # أهداف واسعة ومتباعدة بوضوح على الشارت
+    tp1 = entry - risk_dist * 2.5
+    tp2 = entry - risk_dist * 4.5
+    tp3 = entry - risk_dist * 7.0
 
 maestro_msg = f"🚀 توصية فورية: نفذ صفقة {signal_dir} الآن (نسبة الثقة: {confidence_score}%)"
 maestro_css = "maestro-buy" if raw_dir == "BUY" else "maestro-sell"
@@ -145,7 +147,7 @@ with c_left:
 
     st.markdown(f"""
         <div class="expert-card">
-            <h3 style="color:#a29bfe; margin-top:0;">📋 بطاقة الأوامر الفورية (معدلة 🎯)</h3>
+            <h3 style="color:#a29bfe; margin-top:0;">📋 بطاقة الأوامر الفورية (احترافية 🎯)</h3>
             <div class="order-line">🎯 <b>الدخول (Entry):</b> <code>{entry:.2f}</code></div>
             <div class="order-line" style="border-color:#e74c3c;">🛑 <b>وقف الخسارة (SL):</b> <code>{sl:.2f}</code></div>
             <div class="order-line" style="border-color:#2ecc71;">✅ <b>الهدف 1 (TP1):</b> <code>{tp1:.2f}</code></div>
