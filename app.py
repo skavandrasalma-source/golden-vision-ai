@@ -32,19 +32,9 @@ st.markdown("""
         background-color: #1e1136; padding: 10px 14px; border-radius: 8px;
         margin-bottom: 8px; direction: rtl; text-align: right; border-right: 4px solid #a29bfe;
     }
-    .reason-item {
-        background-color: #120822; padding: 8px 12px; border-radius: 6px;
-        margin-bottom: 6px; direction: rtl; text-align: right; font-size: 14px; border-right: 3px solid #00cec9;
-    }
     h1, h2, h3, h4, p { direction: rtl; text-align: right; }
     </style>
 """, unsafe_allow_html=True)
-
-# سجل الصفقات
-if "trade_journal" not in st.session_state:
-    st.session_state.trade_journal = pd.DataFrame(
-        columns=["التاريخ", "الزوج", "الفريم", "النوع", "الدخول", "SL", "TP1", "TP2", "TP3", "النتيجة ($)", "الحالة"]
-    )
 
 # 2. القائمة الجانبية
 with st.sidebar:
@@ -91,22 +81,20 @@ if err1 or err2:
     st.error(f"⚠️ خطأ في الاتصال بالسوق: {err1 or err2}")
     st.stop()
 
-# 4. محرك التحليل والذكاء الاصطناعي
+# 4. محرك التحليل والذكاء الاصطناعي (مع تعديل تقليص الـ Stop Loss)
 price = df_exec["close"].iloc[-1]
 ema20_trend = df_trend["close"].ewm(span=20).mean().iloc[-1]
 is_bullish = df_trend["close"].iloc[-1] > ema20_trend
 expert_trend = "صاعد قوي 🟢" if is_bullish else "هابط قوي 🔴"
 
-high_25 = df_exec["high"].tail(25).max()
-low_25 = df_exec["low"].tail(25).min()
-rng = high_25 - low_25
 confidence_score = 88
 
 if is_bullish:
     signal_dir = "شراء (BUY)"
     raw_dir = "BUY"
     entry = price
-    sl = price - (rng * 0.15)
+    recent_low = df_exec["low"].tail(5).min()  # الاعتماد على آخر 5 شمعات لتضييق الـ SL
+    sl = recent_low - 0.5
     risk_dist = abs(entry - sl)
     tp1 = entry + risk_dist * 1.5
     tp2 = entry + risk_dist * 2.5
@@ -115,16 +103,17 @@ else:
     signal_dir = "بيع (SELL)"
     raw_dir = "SELL"
     entry = price
-    sl = high_25 + (rng * 0.05)
+    recent_high = df_exec["high"].tail(5).max()  # وقف خسارة ذكي وقريب فوق آخر قمة قصيرة
+    sl = recent_high + 0.8
     risk_dist = abs(sl - entry)
-    tp1 = entry - risk_dist * 1.2
-    tp2 = entry - risk_dist * 2.2
-    tp3 = entry - risk_dist * 3.5
+    tp1 = entry - risk_dist * 1.5
+    tp2 = entry - risk_dist * 2.5
+    tp3 = entry - risk_dist * 4.0
 
 maestro_msg = f"🚀 توصية فورية: نفذ صفقة {signal_dir} الآن (نسبة الثقة: {confidence_score}%)"
 maestro_css = "maestro-buy" if raw_dir == "BUY" else "maestro-sell"
 
-# دالة إرسال الرسالة مع رفع وقت الانتظار إلى 20 ثانية لتفادي الـ Timeout
+# دالة إرسال الرسالة لتيليجرام
 def send_telegram_message(token, chat_id, message):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
@@ -136,7 +125,7 @@ def send_telegram_message(token, chat_id, message):
         else:
             return False, data.get("description", "خطأ من تيليجرام")
     except Exception as e:
-        return False, f"مشكل في الاتصال بالإنترنت أو السيرفر: {str(e)}"
+        return False, f"مشكل في الاتصال: {str(e)}"
 
 # 5. الواجهة الرئيسية
 st.markdown(f"# 🤖 Golden Vision AI & Telegram Bot ({symbol})")
@@ -156,7 +145,7 @@ with c_left:
 
     st.markdown(f"""
         <div class="expert-card">
-            <h3 style="color:#a29bfe; margin-top:0;">📋 بطاقة الأوامر الفورية</h3>
+            <h3 style="color:#a29bfe; margin-top:0;">📋 بطاقة الأوامر الفورية (معدلة 🎯)</h3>
             <div class="order-line">🎯 <b>الدخول (Entry):</b> <code>{entry:.2f}</code></div>
             <div class="order-line" style="border-color:#e74c3c;">🛑 <b>وقف الخسارة (SL):</b> <code>{sl:.2f}</code></div>
             <div class="order-line" style="border-color:#2ecc71;">✅ <b>الهدف 1 (TP1):</b> <code>{tp1:.2f}</code></div>
@@ -165,7 +154,6 @@ with c_left:
         </div>
     """, unsafe_allow_html=True)
 
-    # زر إرسال التنبيه إلى تيليجرام
     if st.button("📤 إرسال هذه التوصية إلى Telegram فوراً", use_container_width=True):
         if not tg_token or not tg_chat_id:
             st.warning("⚠️ أدخل أولاً Telegram Bot Token و Chat ID!")
@@ -194,7 +182,7 @@ with c_right:
         increasing_line_color="#2ecc71", decreasing_line_color="#e74c3c", name=symbol
     )])
     fig.add_hline(y=entry, line_dash="dash", line_color="#a29bfe", annotation_text="Entry")
-    fig.add_hline(y=sl, line_dash="solid", line_color="#e74c3c", annotation_text="SL")
+    fig.add_hline(y=sl, line_dash="solid", line_color="#e74c3c", annotation_text="SL (محسّن)")
     fig.add_hline(y=tp1, line_dash="dot", line_color="#2ecc71", annotation_text="TP1")
     fig.add_hline(y=tp2, line_dash="dot", line_color="#00b894", annotation_text="TP2")
     fig.add_hline(y=tp3, line_dash="dot", line_color="#00b894", annotation_text="TP3")
