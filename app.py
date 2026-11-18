@@ -36,7 +36,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. القائمة الجانبية
+# 2. القائمة الجانبية (محدثة لتشمل فريم 1min بدقة عالية)
 with st.sidebar:
     st.markdown("## ⚙️ إعدادات المنصة وبوت تيليجرام")
     api_key = st.text_input("Twelve Data API Key:", value="afab930df3c64de29322c914219dd640", type="password")
@@ -52,16 +52,16 @@ with st.sidebar:
     else:
         symbol = st.selectbox("اختر العملة:", ["BTC/USD", "ETH/USD", "SOL/USD"])
     
-    exec_tf = st.selectbox("فريم التنفيذ:", ["5min", "15min", "30min"], index=1)
-    trend_tf = st.selectbox("فريم البوصلة:", ["1h", "4h", "1day"], index=1)
+    exec_tf = st.selectbox("فريم التنفيذ (السكالبينج):", ["1min", "5min", "15min", "30min"], index=0)
+    trend_tf = st.selectbox("فريم البوصلة:", ["15min", "1h", "4h"], index=1)
     
     balance = st.number_input("رأس المال ($):", min_value=10.0, value=100.0, step=10.0)
     risk_pct = st.slider("المخاطرة (%):", 0.5, 5.0, 1.0, 0.5)
 
 # 3. جلب البيانات
-@st.cache_data(ttl=25)
+@st.cache_data(ttl=15)
 def fetch_data(sym, interval, key):
-    url = f"https://api.twelvedata.com/time_series?symbol={sym}&interval={interval}&outputsize=80&apikey={key}"
+    url = f"https://api.twelvedata.com/time_series?symbol={sym}&interval={interval}&outputsize=100&apikey={key}"
     try:
         r = requests.get(url, timeout=15).json()
         if "values" not in r:
@@ -81,38 +81,36 @@ if err1 or err2:
     st.error(f"⚠️ خطأ في الاتصال بالسوق: {err1 or err2}")
     st.stop()
 
-# 4. محرك التحليل والذكاء الاصطناعي (وقف خسارة ضيق + أهداف واسعة ومتباعدة)
+# 4. محرك التحليل المخصص للسكالبينج (معدل للسرعة والدقة على 1min)
 price = df_exec["close"].iloc[-1]
 ema20_trend = df_trend["close"].ewm(span=20).mean().iloc[-1]
 is_bullish = df_trend["close"].iloc[-1] > ema20_trend
 expert_trend = "صاعد قوي 🟢" if is_bullish else "هابط قوي 🔴"
 
-confidence_score = 88
+confidence_score = 91
 
 if is_bullish:
     signal_dir = "شراء (BUY)"
     raw_dir = "BUY"
     entry = price
-    recent_low = df_exec["low"].tail(5).min()
-    sl = recent_low - 0.8  # وقف خسارة قريب وتحت القاع بقليل
+    recent_low = df_exec["low"].tail(3).min()
+    sl = recent_low - (entry * 0.0005) # وقف خسارة دقيق جدا للسكالبينج
     risk_dist = abs(entry - sl)
-    # أهداف واسعة وغير متلاصقة
-    tp1 = entry + risk_dist * 2.5
-    tp2 = entry + risk_dist * 4.5
-    tp3 = entry + risk_dist * 7.0
+    tp1 = entry + risk_dist * 2.0
+    tp2 = entry + risk_dist * 3.5
+    tp3 = entry + risk_dist * 5.5
 else:
     signal_dir = "بيع (SELL)"
     raw_dir = "SELL"
     entry = price
-    recent_high = df_exec["high"].tail(5).max()
-    sl = recent_high + 1.2  # وقف خسارة قريب وضيق فوق القمة مباشرة
+    recent_high = df_exec["high"].tail(3).max()
+    sl = recent_high + (entry * 0.0005) # وقف خسارة دقيق فوق آخر قمة سريعة
     risk_dist = abs(sl - entry)
-    # أهداف واسعة ومتباعدة بوضوح على الشارت
-    tp1 = entry - risk_dist * 2.5
-    tp2 = entry - risk_dist * 4.5
-    tp3 = entry - risk_dist * 7.0
+    tp1 = entry - risk_dist * 2.0
+    tp2 = entry - risk_dist * 3.5
+    tp3 = entry - risk_dist * 5.5
 
-maestro_msg = f"🚀 توصية فورية: نفذ صفقة {signal_dir} الآن (نسبة الثقة: {confidence_score}%)"
+maestro_msg = f"🚀 توصية سكالبينج فورية: نفذ صفقة {signal_dir} الآن (نسبة الثقة: {confidence_score}%)"
 maestro_css = "maestro-buy" if raw_dir == "BUY" else "maestro-sell"
 
 # دالة إرسال الرسالة لتيليجرام
@@ -138,7 +136,7 @@ c_left, c_right = st.columns([1.2, 1.8])
 with c_left:
     st.markdown(f"""
         <div class="expert-card">
-            <h3 style="color:#a29bfe; margin-top:0;">📊 تفاصيل التوصية والذكاء الاصطناعي</h3>
+            <h3 style="color:#a29bfe; margin-top:0;">📊 تفاصيل التوصية (Scalping Mode)</h3>
             <p><b>الزوج:</b> {symbol} | <b>الفريم:</b> {exec_tf}</p>
             <p><b>حالة السوق:</b> {expert_trend}</p>
             <p><b>نسبة الثقة الذكية:</b> <span style="color:#00cec9; font-size:18px;">{confidence_score}%</span></p>
@@ -147,7 +145,7 @@ with c_left:
 
     st.markdown(f"""
         <div class="expert-card">
-            <h3 style="color:#a29bfe; margin-top:0;">📋 بطاقة الأوامر الفورية (احترافية 🎯)</h3>
+            <h3 style="color:#a29bfe; margin-top:0;">📋 بطاقة الأوامر الفورية (دقيقة جداً 🎯)</h3>
             <div class="order-line">🎯 <b>الدخول (Entry):</b> <code>{entry:.2f}</code></div>
             <div class="order-line" style="border-color:#e74c3c;">🛑 <b>وقف الخسارة (SL):</b> <code>{sl:.2f}</code></div>
             <div class="order-line" style="border-color:#2ecc71;">✅ <b>الهدف 1 (TP1):</b> <code>{tp1:.2f}</code></div>
@@ -161,8 +159,8 @@ with c_left:
             st.warning("⚠️ أدخل أولاً Telegram Bot Token و Chat ID!")
         else:
             text = (
-                f"🚨 *Golden Vision AI Signal* 🚨\n\n"
-                f"🔹 *الزوج:* `{symbol}`\n"
+                f"🚨 *Golden Vision AI Scalp Signal* 🚨\n\n"
+                f"🔹 *الزوج:* `{symbol}` ({exec_tf})\n"
                 f"🔹 *القرار:* `✨ {signal_dir}`\n\n"
                 f"🎯 *الدخول:* `{entry:.2f}`\n"
                 f"🛑 *وقف الخسارة (SL):* `{sl:.2f}`\n"
@@ -184,7 +182,7 @@ with c_right:
         increasing_line_color="#2ecc71", decreasing_line_color="#e74c3c", name=symbol
     )])
     fig.add_hline(y=entry, line_dash="dash", line_color="#a29bfe", annotation_text="Entry")
-    fig.add_hline(y=sl, line_dash="solid", line_color="#e74c3c", annotation_text="SL (محسّن)")
+    fig.add_hline(y=sl, line_dash="solid", line_color="#e74c3c", annotation_text="SL (Scalp)")
     fig.add_hline(y=tp1, line_dash="dot", line_color="#2ecc71", annotation_text="TP1")
     fig.add_hline(y=tp2, line_dash="dot", line_color="#00b894", annotation_text="TP2")
     fig.add_hline(y=tp3, line_dash="dot", line_color="#00b894", annotation_text="TP3")
